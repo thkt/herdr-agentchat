@@ -44,7 +44,7 @@ herdr-agentchat/
    ```bash
    herdr plugin action invoke thkt.agentchat.start-leader   # claude 起動 + leader 命名
    herdr plugin action invoke thkt.agentchat.start-coder    # codex 起動 + coder 命名
-   herdr plugin action invoke thkt.agentchat.verify-link    # 初回ダイアログ解消 + 役割ブリーフィング注入
+   herdr plugin action invoke thkt.agentchat.verify-link    # ダイアログ解消 + leader へ役割注入
    ```
 
    各 action は冪等 (すでに居れば何もしない)。実行結果は
@@ -53,10 +53,10 @@ herdr-agentchat/
    `LEADER_ARGS` / `CODER_ARGS` を書く (既定: leader は素の claude、coder は
    `-a never -s workspace-write -c sandbox_workspace_write.network_access=true`)。
 
-   verify-link は各エージェントに役割と send コマンドの絶対パスをブリーフィングとして送り、
-   応答まで見届ける。規約ファイルや依頼文の書き方に依存せず、返信プロトコルが双方に届いた
-   状態をセットアップの完了条件にする (規約未読の coder がペイン出力だけで終了し往復が
-   途切れる事象が 2 回再発したための決定論化)。
+   verify-link は coder の初回ダイアログを解消し、leader にだけ役割と send コマンドの
+   絶対パスをブリーフィングとして送って応答まで見届ける。leader の「委譲は send.sh で行う」
+   だけは中継機構で代替できない (send.sh を経由しないと返信待ちマーカーが書かれず relay が
+   関与できない) ため注入する。coder 側の報告経路は relay が機械的に確保するので注入しない。
    もう 1 つの理由: ダイアログ表示中に届いた send の本文はダイアログに吸われて消え、
    しかも herdr が working と分類するため送信側には成功が返る (M1 実機で確認)。
 
