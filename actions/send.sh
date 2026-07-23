@@ -25,7 +25,11 @@ body="$2"
 
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 state_dir="${HERDR_PLUGIN_STATE_DIR:-$HOME/.local/state/herdr-agentchat}"
-mkdir -p "$state_dir"
+
+# 送信者が sandbox 下 (codex workspace-write 等) だと state_dir に書けないことがある。
+# その場合もガード記録を諦めるだけで送信は続行する (M2 実機で発生)。
+state_writable=1
+mkdir -p "$state_dir" 2>/dev/null || state_writable=0
 
 # 暴走防止パラメータ (設計 4.2)
 cooldown_secs=30    # 同一宛先・同一内容の再送を抑止する秒数
@@ -66,8 +70,11 @@ if printf '%s' "$agent_info" | grep -qE '"agent_status"[[:space:]]*:[[:space:]]*
 fi
 
 # 送信記録 (stalled の連打も抑止対象にするため、結果を問わず先に記録する)
-printf '%s %s\n' "$now" "$body_hash" > "$last_file"
-printf '%s\n' "$now" >> "$count_file"
+if [ $state_writable -eq 1 ] && printf '%s %s\n' "$now" "$body_hash" > "$last_file" 2>/dev/null; then
+  printf '%s\n' "$now" >> "$count_file" 2>/dev/null || true
+else
+  echo "warn: state dir '$state_dir' not writable; cooldown/depth guards inactive for this sender" >&2
+fi
 
 # 投入 + 着手観測。--wait は非 working からの送信で 5 秒以内の状態遷移を要求し、
 # 観測できなければ agent_prompt_stalled を返す (herdr 仕様)。
@@ -86,7 +93,15 @@ if [ $status -eq 0 ]; then
 fi
 
 if printf '%s' "$err" | grep -q 'agent_prompt_stalled'; then
-  echo "wake failed: '$to' did not react within 5s (agent_prompt_stalled)" >&2
+  # stalled は「未達」ではない。本文は宛先の入力欄に投入済みで、宛先 UI の状態
+  # (hook 実行中など) により Enter だけが呑まれた場合がある (M1 実機で確認)。
+  # 同一内容の再送は二重投入になるため、Enter の追い打ちで送信を完成させる。
+  "$herdr_bin" agent send-keys "$to" enter >/dev/null 2>&1 || true
+  if "$herdr_bin" agent wait "$to" --until working --until "done" --until blocked --timeout 5000 >/dev/null 2>&1; then
+    echo "sent to '$to'; recipient reacted after enter nudge"
+    exit 0
+  fi
+  echo "wake failed: '$to' did not react within 5s (agent_prompt_stalled); body may sit unsubmitted in its input box" >&2
   exit 6
 fi
 if printf '%s' "$err" | grep -qi 'timeout'; then

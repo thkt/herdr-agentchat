@@ -50,6 +50,11 @@ herdr-agentchat/
    ln -s CLAUDE.md <project>/AGENTS.md
    ```
 
+5. 各エージェントの初回ダイアログ (codex のフック信頼確認など) を人間が先に片付ける。
+   ダイアログ表示中に届いた send の本文はダイアログに吸われて消え、しかも herdr が
+   working と分類するため送信側には成功が返る (M1 実機で確認)。会話を始める前に、
+   各ペインで短い疎通メッセージを 1 往復させて、素の入力待ちであることを確認する。
+
 ## 送信
 
 ```bash
@@ -81,6 +86,23 @@ exit code の意味は `actions/send.sh` 冒頭のコメントと `templates/CLA
 8. (該当時) coder の応答が `herdr agent read <名前>` で読めない場面が出たら、
    `--source visible` で読む。それでも読めなければ「応答を Markdown で一時ファイルに
    書き、パスだけ返す」フォールバックに切り替える。
+
+## 実機検証で確認した注意点 (herdr 0.7.5, M1 テスト)
+
+- `agent start` 直後の send は、claude の初期化 (SessionStart hook 実行中) に本文ごと消えることがある。
+  最初の送信の前に短い疎通メッセージを 1 往復させると安全になる。
+- `agent_prompt_stalled` (exit 6) は「未達」を意味しない。本文は宛先の入力欄に投入済みで、宛先の UI 状態
+  により Enter だけが呑まれた場合がある。そのため send.sh は stalled 時に Enter を追い打ちして送信を
+  完成させる。同一内容の再送は二重投入になるため行わない。
+- codex の承認 UI (コマンド実行確認) は herdr が blocked と検知し、send.sh の blocked ガードが機能する。
+  承認は人間が `herdr agent send-keys coder <key>` で行う。承認なし運用にするなら
+  `codex -a never -s workspace-write -c sandbox_workspace_write.network_access=true` で起動する
+  (network 許可がないと supertest 等のテスト用 listen が sandbox に拒否される)。
+- exit 7 (着手観測タイムアウト) は宛先がすでに working のときにも出る。この場合、本文は届いており
+  宛先のキューで処理される。`herdr agent get <名前>` で working を確認できたら再送しない。
+- sandbox 下の送信者 (codex workspace-write 等) は状態ディレクトリに書けないことがある。send.sh は
+  警告を出してガード記録なしで送信を続行する。ガードを生かすには `HERDR_PLUGIN_STATE_DIR` に
+  書き込み可能なパスを指定して呼び出す。
 
 ## 非目標
 
