@@ -11,6 +11,24 @@ title = "List agents"
 contexts = ["workspace"]
 command = ["bash", "actions/list.sh"]
 
+[[actions]]
+id = "start-leader"
+title = "Start leader (claude)"
+contexts = ["workspace"]
+command = ["bash", "actions/start-leader.sh"]
+
+[[actions]]
+id = "start-coder"
+title = "Start coder (codex)"
+contexts = ["workspace"]
+command = ["bash", "actions/start-coder.sh"]
+
+[[actions]]
+id = "verify-link"
+title = "Verify leader/coder link"
+contexts = ["workspace"]
+command = ["bash", "actions/verify-link.sh"]
+
 # T2: observation only. This hook never sends prompts (loop prevention lives in send.sh).
 [[events]]
 on = "pane.agent_status_changed"

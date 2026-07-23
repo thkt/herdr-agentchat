@@ -38,26 +38,34 @@ herdr-agentchat/
    更新の取り込みは `herdr plugin install` の再実行 (v1 に update コマンドはない)。
    install した実体 (send.sh の置き場所) は `~/.config/herdr/plugins/github/thkt.agentchat-*/` に入る。
 
-2. プロジェクトディレクトリで herdr を起動し、`claude` を起動してペイン名を `leader` にする。
+2. プロジェクトディレクトリで herdr を起動し、対象 workspace にフォーカスした状態で
+   セットアップ action を順に実行する。プロンプト解釈に委ねず決定論で 2 ペインが揃う。
 
    ```bash
-   herdr agent rename <pane_id> leader
+   herdr plugin action invoke thkt.agentchat.start-leader   # claude 起動 + leader 命名
+   herdr plugin action invoke thkt.agentchat.start-coder    # codex 起動 + coder 命名
+   herdr plugin action invoke thkt.agentchat.verify-link    # 初回ダイアログ解消 + 疎通 1 往復
    ```
 
-3. leader に依頼する:「右にペインを作って codex を起動し、agent 名を coder にして」。
-   leader が `herdr pane split --direction right` → codex 起動 → `herdr agent rename` を行う。
+   各 action は冪等 (すでに居れば何もしない)。実行結果は
+   `herdr plugin log list --plugin thkt.agentchat` で確認する。
+   起動引数を変えるときは `$(herdr plugin config-dir thkt.agentchat)/agentchat.conf` に
+   `LEADER_ARGS` / `CODER_ARGS` を書く (既定: leader は素の claude、coder は
+   `-a never -s workspace-write -c sandbox_workspace_write.network_access=true`)。
 
-4. 運用規約を配る。
+   verify-link を挟む理由: ダイアログ表示中に届いた send の本文はダイアログに吸われて消え、
+   しかも herdr が working と分類するため送信側には成功が返る (M1 実機で確認)。
+
+3. 運用規約を配る。
 
    ```bash
    cp templates/CLAUDE.md <project>/CLAUDE.md
    ln -s CLAUDE.md <project>/AGENTS.md
    ```
 
-5. 各エージェントの初回ダイアログ (codex のフック信頼確認など) を人間が先に片付ける。
-   ダイアログ表示中に届いた send の本文はダイアログに吸われて消え、しかも herdr が
-   working と分類するため送信側には成功が返る (M1 実機で確認)。会話を始める前に、
-   各ペインで短い疎通メッセージを 1 往復させて、素の入力待ちであることを確認する。
+   leader が既存セッション (すでに動いている claude) の場合は、規約ファイルを読ませるか
+   依頼文にプラグインの使用を明示する。規約が届いていないセッションは codex exec など
+   自前の手段に逃げる (実機で確認)。
 
 ## 送信
 
