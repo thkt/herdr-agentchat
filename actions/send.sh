@@ -16,12 +16,28 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: send.sh <to-agent-name> <body>" >&2
+  echo "usage: send.sh [--reply-to <your-agent-name>] <to-agent-name> <body>" >&2
   exit 2
 }
+reply_to=""
+if [ "${1:-}" = "--reply-to" ]; then
+  [ $# -ge 3 ] || usage
+  reply_to="$2"
+  shift 2
+fi
 [ $# -eq 2 ] || usage
 to="$1"
 body="$2"
+
+# 受信者に規約 (AGENTS.md) が届いていない環境でも返信経路が伝わるよう、
+# 返信手段をメッセージ自体に埋め込む (規約なしの coder が send せずペイン出力で
+# 終了し、往復が途切れた実機 incident への対策)
+if [ -n "$reply_to" ]; then
+  script_path="$(cd "$(dirname "$0")" && pwd)/send.sh"
+  body="$body
+
+[返信方法] このメッセージへの返信・質問・完了報告は次のコマンドで送ること: bash $script_path $reply_to \"<本文>\""
+fi
 
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
 state_dir="${HERDR_PLUGIN_STATE_DIR:-$HOME/.local/state/herdr-agentchat}"
