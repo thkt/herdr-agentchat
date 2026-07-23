@@ -95,13 +95,13 @@ else
 fi
 
 # 宛先のターン完了を events/relay.sh が自動中継するための返信待ちマーカー。
-# 返信先は --reply-to、未指定で宛先が coder なら leader。返信先 agent が
-# 実在するときだけ書く (1 送信 1 中継。受信者が send を怠っても報告が届く)
+# 返信先は --reply-to、未指定で宛先が coder なら leader。返信先が agent なら
+# send で中継され、実在しない宛先 (human など) なら人間への toast になる
+# (1 送信 1 中継。受信者が send を怠っても報告が届く)
 mark_pending() {
   dest="$reply_to"
   [ -n "$dest" ] || { [ "$to" = "coder" ] && dest="leader"; } || true
   [ -n "$dest" ] || return 0
-  "$herdr_bin" agent get "$dest" >/dev/null 2>&1 || return 0
   [ "$state_writable" -eq 1 ] || return 0
   printf '%s\n' "$dest" > "$state_dir/pending-reply-$to" 2>/dev/null || true
 }

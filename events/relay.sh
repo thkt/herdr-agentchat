@@ -33,12 +33,25 @@ pending="$state_dir/pending-reply-$name"
 dest=$(head -1 "$pending" 2>/dev/null || true)
 [ -n "$dest" ] || { rm -f "$pending"; exit 0; }
 
+notify() { # notify <title> <body>
+  "$herdr_bin" notification show "$1" --body "$2" --sound request >/dev/null 2>&1 || true
+}
+
+# blocked は人間の承認が要る状態なので、agent に伝えるのでなく人間へ toast を出す。
+# pending は保持し、承認後のターン完了で通常の中継が走る
 if [ "$event_status" = "blocked" ]; then
-  bash actions/send.sh "$dest" "[auto-relay] $name が承認/入力待ち (blocked) です。herdr agent read $name --source visible で内容を確認してください。" >/dev/null 2>&1 || true
+  notify "agentchat: $name blocked" "$name が承認/入力待ちです。herdr agent read $name --source visible で確認"
   exit 0
 fi
 
 recent=$("$herdr_bin" agent read "$name" --source recent-unwrapped --lines 80 2>/dev/null | tail -c 3500 || true)
 rm -f "$pending"
-bash actions/send.sh "$dest" "[auto-relay] $name のターンが完了しました。send での報告が別途届いていればそちらを優先してください。$name の直近出力:
+
+# 返信先が agent なら send で中継、実在しない宛先 (human など) なら人間へ toast。
+# leader を介さない直接依頼 (human -> coder) もこれで完結する
+if "$herdr_bin" agent get "$dest" >/dev/null 2>&1; then
+  bash actions/send.sh "$dest" "[auto-relay] $name のターンが完了しました。send での報告が別途届いていればそちらを優先してください。$name の直近出力:
 $recent" >/dev/null 2>&1 || true
+else
+  notify "agentchat: $name done" "$name のターンが完了しました。herdr agent read $name で出力を確認"
+fi

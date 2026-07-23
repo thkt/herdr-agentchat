@@ -1,6 +1,6 @@
 id = "thkt.agentchat"
 name = "Agent Chat"
-version = "0.4.1"
+version = "0.5.0"
 min_herdr_version = "0.7.0"
 description = "leader/coder two-agent conversation: send-and-wake via agent prompt --wait"
 platforms = ["macos"]
