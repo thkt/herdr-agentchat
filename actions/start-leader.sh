@@ -18,4 +18,6 @@ pane=$(split_from "$base")
 
 # shellcheck disable=SC2086
 start_agent leader claude "$pane" $LEADER_ARGS
+# agent 名は宛先解決用で TUI に出ないため、pane label も揃えて可視化する
+"$herdr_bin" pane rename "$pane" leader >/dev/null 2>&1 || true
 echo "leader ready on $pane"

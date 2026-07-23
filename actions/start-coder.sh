@@ -20,4 +20,6 @@ pane=$(split_from "$base")
 
 # shellcheck disable=SC2086
 start_agent coder codex "$pane" $CODER_ARGS
+# agent 名は宛先解決用で TUI に出ないため、pane label も揃えて可視化する
+"$herdr_bin" pane rename "$pane" coder >/dev/null 2>&1 || true
 echo "coder ready on $pane"
