@@ -30,9 +30,12 @@ herdr-agentchat/
 1. プラグインを登録する。
 
    ```bash
-   herdr plugin link /path/to/herdr-agentchat
+   herdr plugin install thkt/herdr-agentchat
    herdr plugin list
    ```
+
+   ローカル開発時は clone したディレクトリを `herdr plugin link /path/to/herdr-agentchat` で登録する。
+   更新の取り込みは `herdr plugin install` の再実行 (v1 に update コマンドはない)。
 
 2. プロジェクトディレクトリで herdr を起動し、`claude` を起動してペイン名を `leader` にする。
 
