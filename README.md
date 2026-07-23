@@ -36,6 +36,7 @@ herdr-agentchat/
 
    ローカル開発時は clone したディレクトリを `herdr plugin link /path/to/herdr-agentchat` で登録する。
    更新の取り込みは `herdr plugin install` の再実行 (v1 に update コマンドはない)。
+   install した実体 (send.sh の置き場所) は `~/.config/herdr/plugins/github/thkt.agentchat-*/` に入る。
 
 2. プロジェクトディレクトリで herdr を起動し、`claude` を起動してペイン名を `leader` にする。
 
