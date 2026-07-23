@@ -1,0 +1,17 @@
+id = "local.agentchat"
+name = "Agent Chat"
+version = "0.1.0"
+min_herdr_version = "0.7.0"
+description = "leader/coder two-agent conversation: send-and-wake via agent prompt --wait"
+platforms = ["macos"]
+
+[[actions]]
+id = "list"
+title = "List agents"
+contexts = ["workspace"]
+command = ["bash", "actions/list.sh"]
+
+# T2: observation only. This hook never sends prompts (loop prevention lives in send.sh).
+[[events]]
+on = "pane.agent_status_changed"
+command = ["bash", "events/log-status.sh"]
