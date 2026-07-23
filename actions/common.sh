@@ -1,6 +1,7 @@
 # setup 系 action の共有関数。単体実行はしない (各 action から source する)。
 
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
+state_dir="${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/thkt.agentchat}"
 
 # 起動引数の既定値。HERDR_PLUGIN_CONFIG_DIR/agentchat.conf で上書きできる。
 # leader は人間の権限選択を尊重して既定は素の claude、coder は承認なし運用が既定

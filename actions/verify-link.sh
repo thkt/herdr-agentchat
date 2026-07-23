@@ -39,6 +39,8 @@ for name in leader coder; do
     # 着手は観測済み。応答の決着まで待って素の入力待ちに戻す
     "$herdr_bin" agent wait "$name" --timeout 120000 >/dev/null 2>&1 || true
     clear_first_run_dialogs "$name"
+    # ブリーフィングへの応答は中継不要なので返信待ちマーカーを掃除する
+    rm -f "$state_dir/pending-reply-$name" 2>/dev/null || true
     echo "$name: briefed"
   else
     echo "$name: briefing failed (state: $("$herdr_bin" agent get "$name" 2>/dev/null | json_field agent_status))" >&2

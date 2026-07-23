@@ -1,6 +1,6 @@
 id = "thkt.agentchat"
 name = "Agent Chat"
-version = "0.3.0"
+version = "0.4.0"
 min_herdr_version = "0.7.0"
 description = "leader/coder two-agent conversation: send-and-wake via agent prompt --wait"
 platforms = ["macos"]
@@ -29,7 +29,13 @@ title = "Verify leader/coder link"
 contexts = ["workspace"]
 command = ["bash", "actions/verify-link.sh"]
 
-# T2: observation only. This hook never sends prompts (loop prevention lives in send.sh).
+# T2: observation log. This hook never sends prompts.
 [[events]]
 on = "pane.agent_status_changed"
 command = ["bash", "events/log-status.sh"]
+
+# Completion relay: delivers a finished turn to the pending sender.
+# One relay per send (marker-gated), so it cannot become a wake loop.
+[[events]]
+on = "pane.agent_status_changed"
+command = ["bash", "events/relay.sh"]

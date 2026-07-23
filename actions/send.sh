@@ -40,7 +40,9 @@ if [ -n "$reply_to" ]; then
 fi
 
 herdr_bin="${HERDR_BIN_PATH:-herdr}"
-state_dir="${HERDR_PLUGIN_STATE_DIR:-$HOME/.local/state/herdr-agentchat}"
+# fallback は herdr が event フックに渡す HERDR_PLUGIN_STATE_DIR と同じ場所に揃える
+# (直接実行の send と event フックが pending マーカーを共有するため)
+state_dir="${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/thkt.agentchat}"
 
 # 送信者が sandbox 下 (codex workspace-write 等) だと state_dir に書けないことがある。
 # その場合もガード記録を諦めるだけで送信は続行する (M2 実機で発生)。
@@ -92,6 +94,18 @@ else
   echo "warn: state dir '$state_dir' not writable; cooldown/depth guards inactive for this sender" >&2
 fi
 
+# 宛先のターン完了を events/relay.sh が自動中継するための返信待ちマーカー。
+# 返信先は --reply-to、未指定で宛先が coder なら leader。返信先 agent が
+# 実在するときだけ書く (1 送信 1 中継。受信者が send を怠っても報告が届く)
+mark_pending() {
+  dest="$reply_to"
+  [ -n "$dest" ] || { [ "$to" = "coder" ] && dest="leader"; } || true
+  [ -n "$dest" ] || return 0
+  "$herdr_bin" agent get "$dest" >/dev/null 2>&1 || return 0
+  [ "$state_writable" -eq 1 ] || return 0
+  printf '%s\n' "$dest" > "$state_dir/pending-reply-$to" 2>/dev/null || true
+}
+
 # 投入 + 着手観測。--wait は非 working からの送信で 5 秒以内の状態遷移を要求し、
 # 観測できなければ agent_prompt_stalled を返す (herdr 仕様)。
 # --until working で「着手」を成功にし、done / blocked も決着として受ける。
@@ -104,6 +118,7 @@ set -e
 
 if [ $status -eq 0 ]; then
   post_state=$("$herdr_bin" agent get "$to" 2>/dev/null | grep -oE '"agent_status"[[:space:]]*:[[:space:]]*"[a-z]+"' | head -1 || true)
+  mark_pending
   echo "sent to '$to'; recipient reacted (${post_state:-agent_status unavailable})"
   exit 0
 fi
@@ -114,6 +129,7 @@ if printf '%s' "$err" | grep -q 'agent_prompt_stalled'; then
   # 同一内容の再送は二重投入になるため、Enter の追い打ちで送信を完成させる。
   "$herdr_bin" agent send-keys "$to" enter >/dev/null 2>&1 || true
   if "$herdr_bin" agent wait "$to" --until working --until "done" --until blocked --timeout 5000 >/dev/null 2>&1; then
+    mark_pending
     echo "sent to '$to'; recipient reacted after enter nudge"
     exit 0
   fi
@@ -121,6 +137,9 @@ if printf '%s' "$err" | grep -q 'agent_prompt_stalled'; then
   exit 6
 fi
 if printf '%s' "$err" | grep -qi 'timeout'; then
+  # 宛先がすでに working の場合もここに来る。本文は届いておりキューで処理されるため
+  # 返信待ちマーカーは残す (ターン完了時に relay が拾う)
+  mark_pending
   echo "sent to '$to' but no start-of-work observed within 15s" >&2
   exit 7
 fi
