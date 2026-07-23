@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# send.sh <to-agent-name> <body>
-#
-# 送信と「相手を起こす」を一手で行う (設計 4.1)。
-# 宛先へ agent prompt --wait で本文を投入し、宛先が着手 (working) するか
-# 決着 (done / blocked) するかをその場で見届けて結果を返す。
-#
 # exit codes:
 #   0  送信し、宛先の着手または決着を観測した
 #   3  クールダウン抑止 (同一宛先へ同一内容の連投)
@@ -14,6 +8,10 @@
 #   7  送信は通ったが着手を観測できないままタイムアウト
 #   2  usage error / 宛先が見つからない
 set -euo pipefail
+
+action_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=env.sh
+. "$action_dir/env.sh"
 
 usage() {
   echo "usage: send.sh [--reply-to <your-agent-name>] <to-agent-name> <body>" >&2
@@ -33,23 +31,17 @@ body="$2"
 # 返信手段をメッセージ自体に埋め込む (規約なしの coder が send せずペイン出力で
 # 終了し、往復が途切れた実機 incident への対策)
 if [ -n "$reply_to" ]; then
-  script_path="$(cd "$(dirname "$0")" && pwd)/send.sh"
+  script_path="$action_dir/send.sh"
   body="$body
 
 [返信方法] このメッセージへの返信・質問・完了報告は次のコマンドで送ること: bash $script_path $reply_to \"<本文>\""
 fi
 
-herdr_bin="${HERDR_BIN_PATH:-herdr}"
-# fallback は herdr が event フックに渡す HERDR_PLUGIN_STATE_DIR と同じ場所に揃える
-# (直接実行の send と event フックが pending マーカーを共有するため)
-state_dir="${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/thkt.agentchat}"
-
 # 送信者が sandbox 下 (codex workspace-write 等) だと state_dir に書けないことがある。
-# その場合もガード記録を諦めるだけで送信は続行する (M2 実機で発生)。
+# その場合もガード記録を諦めるだけで送信は続行する (実機で確認)。
 state_writable=1
 mkdir -p "$state_dir" 2>/dev/null || state_writable=0
 
-# 暴走防止パラメータ (設計 4.2)
 cooldown_secs=30    # 同一宛先・同一内容の再送を抑止する秒数
 max_sends=30        # window 内の同一宛先への送信上限 (往復上限の保険)
 window_secs=600
@@ -57,7 +49,6 @@ window_secs=600
 now=$(date +%s)
 body_hash=$(printf '%s\n%s' "$to" "$body" | shasum -a 256 | cut -d' ' -f1)
 
-# クールダウン: 直前と同一内容の連投を抑止
 last_file="$state_dir/last-send-$to"
 if [ -f "$last_file" ]; then
   read -r last_ts last_hash < "$last_file" || true
@@ -67,7 +58,7 @@ if [ -f "$last_file" ]; then
   fi
 fi
 
-# 往復上限: window 内の送信回数 (タスク境界を持たないため rolling window で代用)
+# タスク境界を持てないため、rolling window の送信数で wake loop を抑止する。
 count_file="$state_dir/sends-$to.log"
 if [ -f "$count_file" ]; then
   recent=$(awk -v cutoff=$((now - window_secs)) '$1 >= cutoff' "$count_file" | wc -l | tr -d ' ')
@@ -77,7 +68,7 @@ if [ -f "$count_file" ]; then
   fi
 fi
 
-# blocked ガード: 承認・質問 UI が出ているペインには送らない
+# 承認・質問 UI への文字流し込みを避けるため、blocked には送らない。
 agent_info=$("$herdr_bin" agent get "$to" 2>&1) || {
   echo "unknown agent '$to': $agent_info" >&2
   exit 2
@@ -94,18 +85,14 @@ else
   echo "warn: state dir '$state_dir' not writable; cooldown/depth guards inactive for this sender" >&2
 fi
 
-# 宛先のターン完了を events/relay.sh が自動中継するための返信待ちマーカー。
-# 返信先は --reply-to、未指定で宛先が coder なら leader。返信先が agent なら
-# send で中継され、実在しない宛先 (human など) なら人間への toast になる
-# (1 送信 1 中継。受信者が send を怠っても報告が届く)
+# 受信者が send を怠っても報告を返すため、成功時に返信先 marker を残す。
 mark_pending() {
   dest="$reply_to"
   [ -n "$dest" ] || { [ "$to" = "coder" ] && dest="leader"; } || true
   [ -n "$dest" ] || return 0
   [ "$state_writable" -eq 1 ] || return 0
   printf '%s\n' "$dest" > "$state_dir/pending-reply-$to" 2>/dev/null || true
-  # 返信待ちを TUI にも出す (relay が完了時に消す)
-  to_pane=$("$herdr_bin" agent get "$to" 2>/dev/null | grep -oE '"pane_id":"[^"]+"' | head -1 | cut -d'"' -f4)
+  to_pane=$("$herdr_bin" agent get "$to" 2>/dev/null | json_field pane_id)
   [ -n "$to_pane" ] && "$herdr_bin" pane report-metadata "$to_pane" --source thkt.agentchat --title "reply pending -> $dest" >/dev/null 2>&1 || true
 }
 
@@ -120,7 +107,7 @@ status=$?
 set -e
 
 if [ $status -eq 0 ]; then
-  post_state=$("$herdr_bin" agent get "$to" 2>/dev/null | grep -oE '"agent_status"[[:space:]]*:[[:space:]]*"[a-z]+"' | head -1 || true)
+  post_state=$("$herdr_bin" agent get "$to" 2>/dev/null | json_field agent_status || true)
   mark_pending
   echo "sent to '$to'; recipient reacted (${post_state:-agent_status unavailable})"
   exit 0
@@ -128,7 +115,7 @@ fi
 
 if printf '%s' "$err" | grep -q 'agent_prompt_stalled'; then
   # stalled は「未達」ではない。本文は宛先の入力欄に投入済みで、宛先 UI の状態
-  # (hook 実行中など) により Enter だけが呑まれた場合がある (M1 実機で確認)。
+  # (hook 実行中など) により Enter だけが呑まれた場合がある (実機で確認)。
   # 同一内容の再送は二重投入になるため、Enter の追い打ちで送信を完成させる。
   "$herdr_bin" agent send-keys "$to" enter >/dev/null 2>&1 || true
   if "$herdr_bin" agent wait "$to" --until working --until "done" --until blocked --timeout 5000 >/dev/null 2>&1; then

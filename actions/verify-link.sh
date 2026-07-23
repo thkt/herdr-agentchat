@@ -1,15 +1,11 @@
 #!/usr/bin/env bash
-# 両者連携の完了確認。coder は初回ダイアログの解消のみ、leader には役割と
-# send.sh の絶対パスをブリーフィングとして注入し、応答まで見届ける。
 # leader の「委譲は send.sh で行う」だけは中継機構で代替できない
 # (send.sh を経由しないと pending マーカーが書かれず relay が関与できない)。
 # coder 側の返信手段は relay が機械的に肩代わりするため注入しない。
-# leader ブリーフィングは claude 初期化直後に最初のメッセージが消える問題の
-# 捨てメッセージも兼ねる。
 #
 # exit codes:
-#   0  連携可能 (coder ダイアログ解消 + leader ブリーフィング完了)
-#   1  agent 不在またはブリーフィング失敗
+#   0  coder ダイアログ解消 + leader ブリーフィング送信・着手確認
+#   1  agent 不在、leader 入力待ち timeout、またはブリーフィング送信失敗
 set -euo pipefail
 cd "$(dirname "$0")"
 . ./common.sh
@@ -29,14 +25,19 @@ clear_first_run_dialogs coder
 echo "coder: dialogs cleared"
 
 clear_first_run_dialogs leader
+if ! "$herdr_bin" agent wait leader --until idle --until "done" --timeout 120000 >/dev/null 2>&1; then
+  echo "leader did not become ready for briefing within 120s" >&2
+  exit 1
+fi
 if bash ./send.sh leader "$leader_briefing" >/dev/null 2>&1; then
-  # 着手は観測済み。応答の決着まで待って素の入力待ちに戻す
-  "$herdr_bin" agent wait leader --timeout 120000 >/dev/null 2>&1 || true
+  if ! "$herdr_bin" agent wait leader --timeout 120000 >/dev/null 2>&1; then
+    echo "warn: leader briefing started but did not settle within 120s" >&2
+  fi
   clear_first_run_dialogs leader
   # ブリーフィングへの応答は中継不要なので返信待ちマーカーを掃除する
   rm -f "$state_dir/pending-reply-leader" 2>/dev/null || true
-  echo "leader: briefed"
-  echo "link verified: leader <-> coder ready"
+  echo "leader: briefing sent; start confirmed"
+  echo "setup ready: coder available, leader briefing started"
   exit 0
 fi
 

@@ -1,7 +1,7 @@
-# setup 系 action の共有関数。単体実行はしない (各 action から source する)。
-
-herdr_bin="${HERDR_BIN_PATH:-herdr}"
-state_dir="${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/thkt.agentchat}"
+# shellcheck shell=bash
+# shellcheck disable=SC2034
+# shellcheck source=env.sh
+. ./env.sh
 
 # 起動引数の既定値。HERDR_PLUGIN_CONFIG_DIR/agentchat.conf で上書きできる。
 # leader は人間の権限選択を尊重して既定は素の claude、coder は承認なし運用が既定
@@ -14,10 +14,6 @@ load_conf() {
   # shellcheck disable=SC1090
   [ -n "${HERDR_PLUGIN_CONFIG_DIR:-}" ] && [ -f "$conf" ] && . "$conf"
   return 0
-}
-
-json_field() { # json_field <key> : stdin の JSON から最初の文字列値を取り出す
-  grep -oE "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4
 }
 
 agent_exists() { # agent_exists <name>
@@ -53,8 +49,18 @@ start_agent() { # start_agent <name> <kind> <pane> [args...]
   return 1
 }
 
-# codex の初回フック信頼ダイアログを片付ける。表示中に届いた send は本文ごと
-# 吸われるため、会話開始前にここで解消しておく (M1/M2 実機で確認した挙動)。
+start_agent_in_split() { # start_agent_in_split <name> <kind> <base-pane> [args...]
+  local name="$1" kind="$2" base="$3" pane
+  shift 3
+  pane=$(split_from "$base")
+  [ -n "$pane" ] || { echo "pane split failed" >&2; return 1; }
+  start_agent "$name" "$kind" "$pane" "$@"
+  # agent 名は TUI に出ないため、pane label も揃えて役割を可視化する。
+  "$herdr_bin" pane rename "$pane" "$name" >/dev/null 2>&1 || true
+  echo "$name ready on $pane"
+}
+
+# ダイアログ表示中の send は本文ごと吸われるため、会話開始前に解消する (実機で確認)。
 clear_first_run_dialogs() { # clear_first_run_dialogs <name>
   for _ in 1 2 3; do
     screen=$("$herdr_bin" agent read "$1" --source visible 2>/dev/null || true)

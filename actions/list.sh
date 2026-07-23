@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# T1 疎通確認: herdr CLI をプラグイン経由で呼べることを確かめるだけの action。
 set -euo pipefail
 
-herdr_bin="${HERDR_BIN_PATH:-herdr}"
+action_dir="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=env.sh
+. "$action_dir/env.sh"
+
 "$herdr_bin" agent list

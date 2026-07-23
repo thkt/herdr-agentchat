@@ -1,26 +1,19 @@
 #!/usr/bin/env bash
-# 完了自動中継。send.sh が書いた返信待ちマーカー (pending-reply-<name>) がある
-# エージェントのターン完了 (done / idle) を検知したら、そのペインの直近出力を
-# 返信先へ中継してマーカーを消す。受信者が send での報告を怠っても、herdr の
-# 状態遷移から機械的に報告が届く。中継は 1 送信につき最大 1 回で、中継自体は
-# マーカーを書かないため起こし合いのループにはならない。
-# blocked 遷移は承認待ちの通知だけ送り、マーカーは保持する。
+# marker gating で中継を1回に制限し、blocked は人間の承認後まで保持する。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-herdr_bin="${HERDR_BIN_PATH:-herdr}"
-state_dir="${HERDR_PLUGIN_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/herdr/plugins/thkt.agentchat}"
+# shellcheck source=../actions/env.sh
+. actions/env.sh
+
 ev="${HERDR_PLUGIN_EVENT_JSON:-}"
 [ -n "$ev" ] || exit 0
-
-json_field() { grep -oE "\"$1\":\"[^\"]*\"" | head -1 | cut -d'"' -f4; }
 
 event_status=$(printf '%s' "$ev" | json_field agent_status)
 event_pane=$(printf '%s' "$ev" | json_field pane_id)
 case "$event_status" in done | idle | blocked) ;; *) exit 0 ;; esac
 [ -n "$event_pane" ] || exit 0
 
-# pending マーカーを持つ名前付き agent のペインか判定する
 name=""
 for candidate in leader coder; do
   [ -f "$state_dir/pending-reply-$candidate" ] || continue
@@ -48,8 +41,7 @@ recent=$("$herdr_bin" agent read "$name" --source recent-unwrapped --lines 80 2>
 rm -f "$pending"
 "$herdr_bin" pane report-metadata "$event_pane" --source thkt.agentchat --clear-title >/dev/null 2>&1 || true
 
-# 返信先が agent なら send で中継、実在しない宛先 (human など) なら人間へ toast。
-# leader を介さない直接依頼 (human -> coder) もこれで完結する
+# 実在しない返信先は、人間から直接依頼した turn を閉じるため toast にする。
 if "$herdr_bin" agent get "$dest" >/dev/null 2>&1; then
   bash actions/send.sh "$dest" "[auto-relay] $name のターンが完了しました。send での報告が別途届いていればそちらを優先してください。$name の直近出力:
 $recent" >/dev/null 2>&1 || true

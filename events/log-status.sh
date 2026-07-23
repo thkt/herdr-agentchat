@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# T2 観測専用フック: agent 状態遷移をログに残す。ここから prompt は撃たない (暴走防止の設計)。
 set -euo pipefail
 
-state_dir="${HERDR_PLUGIN_STATE_DIR:-$HOME/.local/state/herdr-agentchat}"
+plugin_root="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=../actions/env.sh
+. "$plugin_root/actions/env.sh"
+
 mkdir -p "$state_dir"
 
 printf '%s\t%s\n' \
