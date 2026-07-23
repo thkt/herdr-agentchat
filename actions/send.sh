@@ -104,6 +104,9 @@ mark_pending() {
   [ -n "$dest" ] || return 0
   [ "$state_writable" -eq 1 ] || return 0
   printf '%s\n' "$dest" > "$state_dir/pending-reply-$to" 2>/dev/null || true
+  # 返信待ちを TUI にも出す (relay が完了時に消す)
+  to_pane=$("$herdr_bin" agent get "$to" 2>/dev/null | grep -oE '"pane_id":"[^"]+"' | head -1 | cut -d'"' -f4)
+  [ -n "$to_pane" ] && "$herdr_bin" pane report-metadata "$to_pane" --source thkt.agentchat --title "reply pending -> $dest" >/dev/null 2>&1 || true
 }
 
 # 投入 + 着手観測。--wait は非 working からの送信で 5 秒以内の状態遷移を要求し、

@@ -46,6 +46,7 @@ fi
 
 recent=$("$herdr_bin" agent read "$name" --source recent-unwrapped --lines 80 2>/dev/null | tail -c 3500 || true)
 rm -f "$pending"
+"$herdr_bin" pane report-metadata "$event_pane" --source thkt.agentchat --clear-title >/dev/null 2>&1 || true
 
 # 返信先が agent なら send で中継、実在しない宛先 (human など) なら人間へ toast。
 # leader を介さない直接依頼 (human -> coder) もこれで完結する
